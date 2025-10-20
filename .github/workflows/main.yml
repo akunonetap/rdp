@@ -20,7 +20,7 @@ jobs:
                              -Name "SecurityLayer" -Value 0 -Force
 
           # Remove any existing rule with the same name to avoid duplication
-          netsh advfirewall firewall delete rule name="RDP-Tailscale" || Write-Host "No existing rule to delete"
+          netsh advfirewall firewall delete rule name="RDP-Tailscale"
           
           # For testing, allow any incoming connection on port 3389
           netsh advfirewall firewall add rule name="RDP-Tailscale" `
@@ -29,26 +29,26 @@ jobs:
           # (Optional) Restart the Remote Desktop service to ensure changes take effect
           Restart-Service -Name TermService -Force
 
-      - name: Create RDP User with fixed password
+      - name: Create RDP User with Secure Password
         run: |
-          # Jika user "RDP" sudah ada, hapus dulu agar recreate konsisten (opsional)
-          if (Get-LocalUser -Name "RDP" -ErrorAction SilentlyContinue) {
-            Remove-LocalUser -Name "RDP"
+          Add-Type -AssemblyName System.Security
+          $charSet = @{
+              Upper   = [char[]](65..90)      # A-Z
+              Lower   = [char[]](97..122)     # a-z
+              Number  = [char[]](48..57)      # 0-9
+              Special = ([char[]](33..47) + [char[]](58..64) +
+                         [char[]](91..96) + [char[]](123..126)) # Special characters
           }
-
-          $password = "12345"
+          $rawPassword = @()
+          # fixed password (replaced random generation)
+          $password = "freerdp2025"
           $securePass = ConvertTo-SecureString $password -AsPlainText -Force
-
-          # Buat user dengan password tetap
           New-LocalUser -Name "RDP" -Password $securePass -AccountNeverExpires
-
-          # Tambahkan ke group yang diperlukan
           Add-LocalGroupMember -Group "Administrators" -Member "RDP"
           Add-LocalGroupMember -Group "Remote Desktop Users" -Member "RDP"
-
-          # Simpan kredensial ke env supaya bisa dipakai di step lain
+          
           echo "RDP_CREDS=User: RDP | Password: $password" >> $env:GITHUB_ENV
-
+          
           if (-not (Get-LocalUser -Name "RDP")) {
               Write-Error "User creation failed"
               exit 1
@@ -100,7 +100,7 @@ jobs:
           Write-Host "`n=== RDP ACCESS ==="
           Write-Host "Address: $env:TAILSCALE_IP"
           Write-Host "Username: RDP"
-          Write-Host "Password: $env:RDP_CREDS"
+          Write-Host "Password: $(echo $env:RDP_CREDS)"
           Write-Host "==================`n"
           
           # Keep runner active indefinitely (or until manually cancelled)
